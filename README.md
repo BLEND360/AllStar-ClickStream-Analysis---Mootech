@@ -1,6 +1,6 @@
-<summary>
-    <h1 style="border-bottom: none">DE Capstone Project</h1>
-</summary>
+
+<h1 style="border-bottom: none">DE Capstone Project</h1>
+
 
 ![Python v3.9](https://img.shields.io/badge/python-v3.9-blue)
 <hr>
