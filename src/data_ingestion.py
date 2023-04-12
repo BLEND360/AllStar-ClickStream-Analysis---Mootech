@@ -4,8 +4,10 @@ import requests
 import json
 import datetime
 from datetime import timedelta
+from databricks.sdk.runtime import dbutils
 
 
+# noinspection PyTypeChecker
 class DataIngest:
     def __init__(self, scope: str, key: str):
         self.scope = scope
@@ -19,9 +21,11 @@ class DataIngest:
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
 
-    def get_data_by_range(self, start_date: datetime.datetime,
+    def get_data_by_range(self,
+                          table: str,
+                          start_date: datetime.datetime,
                           end_date: datetime.datetime = datetime.datetime.today() - timedelta(days=1),
-                          table: str = None):
+                          ):
         """
         Retrieves data from the given start_date to end_date (by default end_date is yesterday)
         """
@@ -42,7 +46,10 @@ class DataIngest:
             logging.info(f"Sending request for {table} table between {first_day} and {last_day}")
             self.send_request(first_day, last_day, table)
 
-    def send_request(self, start_date, end_date, table):
+    def send_request(self, start_date: datetime.datetime, end_date: datetime.datetime, table: str):
+        """
+        Generate the payload and send the request to the API endpoint
+        """
         start_date = start_date.strftime("%m-%d-%Y")
         end_date = end_date.strftime("%m-%d-%Y")
         params_dict = {
@@ -72,23 +79,30 @@ class DataIngest:
             logging.info(f"{self.job_description[job_id]} FAILED TO START")
 
 
+# noinspection PyTypeChecker
 def main():
+    """
+    initializes the DataIngest Class and retrieves the data since last load
+    for transaction tables and the latest for SCD tables
+    """
     # update transactions tables
     data_ingest = DataIngest(scope='mootech-scope', key='mootech-key')
-    data_ingest.get_data_by_range(start_date='<date since last load>', table='clickstream')
+    data_ingest.get_data_by_range(table='clickstream', start_date='<date since last load>')
 
-    data_ingest.get_data_by_range(start_date='<date since last load>', table='transactions')
+    data_ingest.get_data_by_range(table='transactions', start_date='<date since last load>')
     # update SCD tables
     day_before_yesterday = datetime.datetime.now() - timedelta(days=2)
     yesterday = datetime.datetime.now() - timedelta(days=1)
 
-    data_ingest.get_data_by_range(start_date=day_before_yesterday,
+    data_ingest.get_data_by_range(table='users',
+                                  start_date=day_before_yesterday,
                                   end_date=yesterday,
-                                  table='users')
+                                  )
 
-    data_ingest.get_data_by_range(start_date=day_before_yesterday,
+    data_ingest.get_data_by_range(table='products',
+                                  start_date=day_before_yesterday,
                                   end_date=yesterday,
-                                  table='products')
+                                  )
 
 
 if __name__ == "__main__":
