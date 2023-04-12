@@ -1,3 +1,5 @@
+import time
+import logging
 import requests
 import json
 import datetime
@@ -19,6 +21,13 @@ class DataIngest:
         self.scope = scope
         self.key = key
         self.api_key = dbutils.secrets.get(scope=self.scope, key=self.key)
+        self.jobs = list()
+        self.job_description = dict()
+        logging.basicConfig(filename='logs/data_ingestion.log',
+                            format='%(asctime)s %(message)s',
+                            filemode='w')
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
 
     def get_data_by_range(self, start_date: datetime.datetime,
                           end_date: datetime.datetime = datetime.datetime.today() - timedelta(days=1),
@@ -40,9 +49,10 @@ class DataIngest:
 
             first_day = datetime.date(year, start_month, start_day)
             last_day = datetime.date(year, end_month, end_day)
-            self.make_request(first_day, last_day, table)
+            logging.info(f"Sending request for {table} table between {first_day} and {last_day}")
+            self.send_request(first_day, last_day, table)
 
-    def make_request(self, start_date, end_date, table):
+    def send_request(self, start_date, end_date, table):
         params_dict = {
             "start_date": start_date,
             "end_date": end_date,
@@ -52,13 +62,19 @@ class DataIngest:
             "table": table
         }
         payload = json.dumps(params_dict)
+        while len(self.jobs) >= 2:
+            for job_id in self.jobs:
+                job_status = requests.get('https://en44bq5e33.execute-api.us-east-1.amazonaws.com/dev/job_status',
+                                          data=json.dumps({'job_id': job_id})).json()['execution_status']
+                if job_status == 'COMPLETE':
+                    logging.info(f"{self.job_description[job_id]} COMPLETED")
+                    self.jobs.remove(job_id)
+            time.sleep(20)
         response = requests.post('https://en44bq5e33.execute-api.us-east-1.amazonaws.com/dev/fetch_data', data=payload)
-        return response
-
-
-
-# check status
-
-job_status = requests.get('https://en44bq5e33.execute-api.us-east-1.amazonaws.com/dev/job_status',
-                          data=json.dumps({'job_id': 147841}))
-print(job_status.json())
+        if response.status_code == 200:
+            job_id = response.json()['job_id']
+            self.job_description[job_id] = f"Job to fetch {table} table between {start_date} and {end_date}"
+            logging.info(f"{self.job_description[job_id]} STARTED")
+            self.jobs.append(job_id)
+        else:
+            logging.info(f"{self.job_description[job_id]} FAILED TO START")
