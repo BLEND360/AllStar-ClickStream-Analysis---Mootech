@@ -5,16 +5,6 @@ import json
 import datetime
 from datetime import timedelta
 
-'''
-to-do:
-
-- function to get date between specified ranges
-- schedule multiple jobs and make sure concurrency limit is not exceeded
-- function to automatically ingest data in a certain fixed interval
-'''
-
-
-# data_ingest
 
 class DataIngest:
     def __init__(self, scope: str, key: str):
@@ -23,7 +13,7 @@ class DataIngest:
         self.api_key = dbutils.secrets.get(scope=self.scope, key=self.key)
         self.jobs = list()
         self.job_description = dict()
-        logging.basicConfig(filename='logs/data_ingestion.log',
+        logging.basicConfig(filename='data_ingestion.log',
                             format='%(asctime)s %(message)s',
                             filemode='w')
         logger = logging.getLogger()
@@ -53,6 +43,8 @@ class DataIngest:
             self.send_request(first_day, last_day, table)
 
     def send_request(self, start_date, end_date, table):
+        start_date = start_date.strftime("%m-%d-%Y")
+        end_date = end_date.strftime("%m-%d-%Y")
         params_dict = {
             "start_date": start_date,
             "end_date": end_date,
@@ -78,3 +70,26 @@ class DataIngest:
             self.jobs.append(job_id)
         else:
             logging.info(f"{self.job_description[job_id]} FAILED TO START")
+
+
+def main():
+    # update transactions tables
+    data_ingest = DataIngest(scope='mootech-scope', key='mootech-key')
+    data_ingest.get_data_by_range(start_date='<date since last load>', table='clickstream')
+
+    data_ingest.get_data_by_range(start_date='<date since last load>', table='transactions')
+    # update SCD tables
+    day_before_yesterday = datetime.datetime.now() - timedelta(days=2)
+    yesterday = datetime.datetime.now() - timedelta(days=1)
+
+    data_ingest.get_data_by_range(start_date=day_before_yesterday,
+                                  end_date=yesterday,
+                                  table='users')
+
+    data_ingest.get_data_by_range(start_date=day_before_yesterday,
+                                  end_date=yesterday,
+                                  table='products')
+
+
+if __name__ == "__main__":
+    main()
