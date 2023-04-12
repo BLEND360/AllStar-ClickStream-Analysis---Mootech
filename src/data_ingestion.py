@@ -41,17 +41,15 @@ class DataIngest:
             else:
                 end_month, end_day = end_date.month, end_date.day
 
-            first_day = datetime.date(year, start_month, start_day)
-            last_day = datetime.date(year, end_month, end_day)
+            first_day = datetime.date(year, start_month, start_day).strftime("%m-%d-%Y")
+            last_day = datetime.date(year, end_month, end_day).strftime("%m-%d-%Y")
             logging.info(f"Sending request for {table} table between {first_day} and {last_day}")
             self.send_request(first_day, last_day, table)
 
-    def send_request(self, start_date: datetime.datetime, end_date: datetime.datetime, table: str):
+    def send_request(self, start_date: str, end_date: str, table: str):
         """
         Generate the payload and send the request to the API endpoint
         """
-        start_date = start_date.strftime("%m-%d-%Y")
-        end_date = end_date.strftime("%m-%d-%Y")
         params_dict = {
             "start_date": start_date,
             "end_date": end_date,
