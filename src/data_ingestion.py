@@ -4,7 +4,6 @@ import requests
 import json
 import datetime
 from datetime import timedelta
-from databricks.sdk.runtime import dbutils
 
 
 # noinspection PyTypeChecker
@@ -12,8 +11,9 @@ class DataIngest:
     def __init__(self, scope: str, key: str):
         self.scope = scope
         self.key = key
-        self.api_key = dbutils.secrets.get(scope=self.scope, key=self.key)
-        self.jobs = list()
+        self.api_key = dbutils.secret.get(scope=self.scope, key=self.key)
+        self.job_queue = list()
+        self.running_jobs = list()
         self.job_description = dict()
         logging.basicConfig(filename='data_ingestion.log',
                             format='%(asctime)s %(message)s',
@@ -21,15 +21,19 @@ class DataIngest:
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
 
+    @property
+    def allow_additional_run(self):
+        return False if len(self.running_jobs) >= 2 else True
+
     def get_data_by_range(self,
                           table: str,
                           start_date: datetime.datetime,
-                          end_date: datetime.datetime = datetime.datetime.today() - timedelta(days=1),
+                          end_date: datetime.datetime = datetime.datetime.utcnow().date() - timedelta(days=1),
                           ):
         """
         Retrieves data from the given start_date to end_date (by default end_date is yesterday)
         """
-        start_date = start_date  # to be edited
+        # start_date = start_date  # to be edited
         for year in range(start_date.year, end_date.year + 1):
             if year > start_date.year:
                 start_month, start_day = 1, 1
@@ -43,14 +47,15 @@ class DataIngest:
 
             first_day = datetime.date(year, start_month, start_day).strftime("%m-%d-%Y")
             last_day = datetime.date(year, end_month, end_day).strftime("%m-%d-%Y")
-            logging.info(f"Sending request for {table} table between {first_day} and {last_day}")
-            self.send_request(first_day, last_day, table)
+            logging.info(f"queuing request for {table} table between {first_day} and {last_day}")
+            print(f"queuing request for {table} table between {first_day} and {last_day}")
+            self.queue_job(first_day, last_day, table)
 
-    def send_request(self, start_date: str, end_date: str, table: str):
+    def queue_job(self, start_date: str, end_date: str, table: str):
         """
-        Generate the payload and send the request to the API endpoint
+        Creates a json payload and adds it to the list of jobs to be run
         """
-        params_dict = {
+        payload = {
             "start_date": start_date,
             "end_date": end_date,
             "api_key": self.api_key,
@@ -58,50 +63,46 @@ class DataIngest:
             "destination_s3_directory": f"raw_data/{table}/{start_date}-{end_date}",
             "table": table
         }
-        payload = json.dumps(params_dict)
-        while len(self.jobs) >= 2:
-            for job_id in self.jobs:
-                job_status = requests.get('https://en44bq5e33.execute-api.us-east-1.amazonaws.com/dev/job_status',
-                                          data=json.dumps({'job_id': job_id})).json()['execution_status']
-                if job_status == 'COMPLETE':
-                    logging.info(f"{self.job_description[job_id]} COMPLETED")
-                    self.jobs.remove(job_id)
-            time.sleep(20)
-        response = requests.post('https://en44bq5e33.execute-api.us-east-1.amazonaws.com/dev/fetch_data', data=payload)
-        if response.status_code == 200:
-            job_id = response.json()['job_id']
-            self.job_description[job_id] = f"Job to fetch {table} table between {start_date} and {end_date}"
-            logging.info(f"{self.job_description[job_id]} STARTED")
-            self.jobs.append(job_id)
-        else:
-            logging.info(f"{self.job_description[job_id]} FAILED TO START")
+        print(payload)
+        # payload = json.dumps(params_dict)
+        self.job_queue.append(payload)
 
+    def run_fetch(self):
+        """
+        Get the payload from the job_queue and send the request to the API endpoint
+        """
+        while len(self.job_queue) > 0 or len(self.running_jobs) > 0:
+            if self.allow_additional_run and len(self.job_queue) > 0:
+                payload = self.job_queue.pop(0)
+                response = requests.post('https://en44bq5e33.execute-api.us-east-1.amazonaws.com/dev/fetch_data',
+                                         data=json.dumps(payload))
+                if response.status_code == 200:
+                    job_id = response.json()['job_id']
+                    self.job_description[
+                        job_id] = f"Job to fetch {payload['table']} table between {payload['start_date']} and {payload['end_date']}"
+                    logging.info(f"{self.job_description[job_id]} STARTED")
+                    print(f"{self.job_description[job_id]} STARTED")
+                    self.running_jobs.append(job_id)
+                else:
+                    logging.info(f"{self.job_description[job_id]} FAILED TO START")
+                    print(f"{self.job_description[job_id]} FAILED TO START")
 
-# noinspection PyTypeChecker
-def main():
-    """
-    initializes the DataIngest Class and retrieves the data since last load
-    for transaction tables and the latest for SCD tables
-    """
-    # update transactions tables
-    data_ingest = DataIngest(scope='mootech-scope', key='mootech-key')
-    data_ingest.get_data_by_range(table='clickstream', start_date='<date since last load>')
+            if len(self.running_jobs) > 0:
+                self.monitor_jobs()
 
-    data_ingest.get_data_by_range(table='transactions', start_date='<date since last load>')
-    # update SCD tables
-    day_before_yesterday = datetime.datetime.now() - timedelta(days=2)
-    yesterday = datetime.datetime.now() - timedelta(days=1)
-
-    data_ingest.get_data_by_range(table='users',
-                                  start_date=day_before_yesterday,
-                                  end_date=yesterday,
-                                  )
-
-    data_ingest.get_data_by_range(table='products',
-                                  start_date=day_before_yesterday,
-                                  end_date=yesterday,
-                                  )
-
-
-if __name__ == "__main__":
-    main()
+    def monitor_jobs(self):
+        """
+        monitors and logs the status of the running jobs at a fixed interval
+        """
+        jobs_copy = self.running_jobs.copy()
+        for job_id in jobs_copy:
+            job_status = requests.get('https://en44bq5e33.execute-api.us-east-1.amazonaws.com/dev/job_status',
+                                      data=json.dumps({'job_id': job_id})).json()['execution_status']
+            logging.info(f"{job_id}: {job_status}")
+            print(f"{job_id}: {job_status}")
+            if job_status == 'COMPLETE':
+                logging.info(f"{self.job_description[job_id]} COMPLETED")
+                print(f"{self.job_description[job_id]} COMPLETED")
+                self.running_jobs.remove(job_id)
+            time.sleep(5)
+        time.sleep(20)
