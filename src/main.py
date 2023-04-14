@@ -6,13 +6,15 @@ from src.utils.common_functions import get_latest_transaction_date, save_to_gold
 import datetime
 
 
-def ingest():
+def update_bronze_layer():
     """
     initializes the DataIngest Class and retrieves the data since last load
     for transaction tables and the latest for SCD tables
     """
+    api_key = dbutils.secrets.get(scope='mootech-scope', key='mootech-key')
+
     # update transactions tables
-    data_ingest = DataIngest(scope='mootech-scope', key='mootech-key')
+    data_ingest = DataIngest(api_key = api_key)
     start_date = get_latest_transaction_date()
 
     data_ingest.get_data_by_range(table='clickstream', start_date=start_date)
@@ -32,7 +34,27 @@ def ingest():
                                   end_date=yesterday,
                                   )
     data_ingest.run_fetch()
+    print('bronze layer updated successfully')
 
+def update_silver_layer():
+    # setup and save data into silver layer
+    silver_layer = SilverLayer()
+    silver_layer.setup_transactions()
+    silver_layer.save_transactions()
+
+def update_gold_layer(sales_report,filename):
+    # save report to gold layer
+    save_to_gold_layer(sales_report, f"sales_report_{filename}")
+    print('report saved to gold layer')
+
+def generate_report(item_to_be_queried: str):
+    # get transformer
+    transformer = MoMTransformer()
+
+    # get month_over_month_report
+    sales_report = transformer.transform(item_to_be_queried)
+    print('report generated successfully')
+    return sales_report
 
 def main():
     """
@@ -41,28 +63,22 @@ def main():
     Calculates month-over-month sales report for item
     :return: None
     """
-    # The item we want the sales report for
-    item_to_be_queried = 'tumbler'
+    
 
     # Ingest new data
-    ingest()
+    update_bronze_layer()
 
-    # setup and save data into silver layer
-    silver_layer = SilverLayer()
-    silver_layer.setup_transactions()
-    silver_layer.save_transactions()
+    # update silver layer
+    update_silver_layer()
 
-    # get transformer
-    transformer = MoMTransformer()
+    # generate and save report to gold layer
+    sales_report = generate_report('tumbler')
+    update_gold_layer(sales_report, 'tumbler')
 
-    # get month_over_month_report
-    sales_report = transformer.transform(item_to_be_queried)
-    print('report generated successfully')
-
-    # save report to gold layer
-    save_to_gold_layer(sales_report, f"sales_report_{item_to_be_queried}")
-    print('report saved to gold layer')
+    
 
 
 if __name__ == "__main__":
     main()
+
+    
