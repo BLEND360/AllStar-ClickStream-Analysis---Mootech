@@ -22,10 +22,16 @@ def get_transactions(path: str = S3Layers.BRONZE.value, data_format: str = "parq
     :param path: the path to the bronze layer
     :return: transactions data frame
     """
+
+    if 'raw_data' in path:
+        ext = "/**"
+    else:
+        ext = ""
+
     transactions_df = (spark
                        .read
                        .format(data_format)
-                       .load(f"{path}/transactions/**")
+                       .load(f"{path}/transactions{ext}")
                        )
 
     return transactions_df

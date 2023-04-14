@@ -1,6 +1,6 @@
 import src.utils.load_tables as load_tables
 from pyspark.sql import SparkSession, Window
-from pyspark.sql.functions import col, explode, month, year, lit, when, lag
+from pyspark.sql.functions import col, explode, month, year, lit, when, lag, max, sum, round
 from src.utils.S3Layers import S3Layers
 
 spark = SparkSession.builder.getOrCreate()
@@ -11,8 +11,8 @@ class MoMTransformer:
     def __init__(self):
         self.transactions_filtered = None
         self.transactions = None
-        self.transactions_df = load_tables.get_transactions(S3Layers.SILVER.value)
-        self.products_df = load_tables.get_products(S3Layers.BRONZE.value)
+        self.transactions_df = load_tables.get_transactions(path=S3Layers.SILVER.value, data_format='delta')
+        self.products_df = load_tables.get_products(path=S3Layers.BRONZE.value)
         self.name_mapping_df = load_tables.name_map
 
     def __get_product_id(self, item: str) -> str:
