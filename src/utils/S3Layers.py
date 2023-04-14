@@ -10,3 +10,4 @@ class S3Layers(Enum):
     BRONZE = "s3://allstar-training-mootech/raw_data"
     SILVER = "s3://allstar-training-mootech/silver_layer"
     GOLD = "s3://allstar-training-mootech/results"
+    SILVER_TEMP = "s3://allstar-training-mootech/silver_temp"

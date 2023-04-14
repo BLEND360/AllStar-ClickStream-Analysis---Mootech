@@ -7,6 +7,6 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def get_latest_transaction_date():
-    transactions_df = load_tables.get_transactions(S3Layers.SILVER)
+    transactions_df = load_tables.get_transactions(S3Layers.BRONZE.value)
 
-    return transactions_df.agg(max(col('utc_date')))
+    return transactions_df.agg(max(col('utc_date')).alias('last_date')).collect()[0]['last_date']

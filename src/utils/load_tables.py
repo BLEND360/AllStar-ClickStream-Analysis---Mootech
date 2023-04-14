@@ -4,25 +4,24 @@
 
     Functions:
     - get_transactions_raw: loads transaction table from bronze layer
-    - get_users: loads users table from bronze layer
+    - get_users: loads users table from bronze layer. (To be implemented)
     - get_products: loads products table from bronze layer
-    - get_clickstream: loads click stream table from bronze layer
+    - get_clickstream: loads click stream table from bronze layer. (To be implemented)
 """
 
 from pyspark.sql import SparkSession
-from src.utils import S3Layers
+from src.utils.S3Layers import S3Layers
 
 spark = SparkSession.builder.getOrCreate()
 
 
-def get_transactions(path: str = S3Layers.BRONZE, data_format: str = "parquet"):
+def get_transactions(path: str = S3Layers.BRONZE.value, data_format: str = "parquet"):
     """
     Returns the raw transactions data stored in bronze layer
     :param data_format: which format the stored data uses. defaults to parquet
     :param path: the path to the bronze layer
     :return: transactions data frame
     """
-
     transactions_df = (spark
                        .read
                        .format(data_format)
@@ -32,7 +31,7 @@ def get_transactions(path: str = S3Layers.BRONZE, data_format: str = "parquet"):
     return transactions_df
 
 
-def get_products(path: str = S3Layers.BRONZE, data_format: str = "delta"):
+def get_products(path: str = S3Layers.BRONZE.value, data_format: str = "delta"):
     """
     Returns the raw products table stored in bronze layer
     :param data_format:  which format the stored data uses. defaults to delta
