@@ -38,7 +38,7 @@ class SilverLayer:
                 'email',
                 'transaction_type',
                 'items',
-                'total_item_quantity'
+                'total_item_quantity',
                 'total_purchase_usd',
                 to_timestamp('transaction_timestamp').alias('timestamp'),
                 'utc_date'
