@@ -1,6 +1,6 @@
 import src.utils.load_tables as load_tables
 from pyspark.sql import SparkSession, Window
-from pyspark.sql.functions import col, explode, month, year, lit, when, lag
+from pyspark.sql.functions import col, explode, month, year, lit, when, lag, max, sum, round
 from src.utils.S3Layers import S3Layers
 
 spark = SparkSession.builder.getOrCreate()
@@ -11,11 +11,16 @@ class MoMTransformer:
     def __init__(self):
         self.transactions_filtered = None
         self.transactions = None
-        self.transactions_df = load_tables.get_transactions(S3Layers.SILVER.value)
-        self.products_df = load_tables.get_products(S3Layers.BRONZE.value)
+        self.transactions_df = load_tables.get_transactions(path=S3Layers.SILVER.value, data_format='delta')
+        self.products_df = load_tables.get_products(path=S3Layers.BRONZE.value)
         self.name_mapping_df = load_tables.name_map
 
     def __get_product_id(self, item: str) -> str:
+        """
+        returns the product id for given item name
+        :param item: the product we're searching for
+        :return: the corresponding product_id
+        """
         product_id = (self.name_mapping_df
                       .select('product_id')
                       .filter(col('product_name') == item)
@@ -24,6 +29,11 @@ class MoMTransformer:
         return product_id
 
     def __get_item_cost(self, product_id: str, ):
+        """
+        returns the cost of item with given product id
+        :param product_id: the product id we need the cost for
+        :return: the cost of given product
+        """
         item_cost = (self.products_df
                      .select('price')
                      .filter(col('product_id') == product_id)
@@ -32,17 +42,35 @@ class MoMTransformer:
         return item_cost
 
     def __get_purchases(self):
+        """
+        extract from transactions table all purchases
+        :return: dataframe with all purchases
+        """
         return self.transactions_filtered.filter(col('transaction_type') == 'purchase')
 
     def __get_returns(self):
+        """
+        extract from transactions table all returns
+        :return: dataframe with all returns
+        """
         return self.transactions_filtered.filter(col('transaction_type') == 'return')
 
     def transform(self, product: str):
+        """
+        Filters transaction table according to product. Performs necessary transformations
+        to generate month over month sales report
+        :param product: the name of the product for which the report is generated
+        :return: final report dataframe
+        """
+
+        # get product id and cost from product name
         product_id = self.__get_product_id(product)
         item_cost = self.__get_item_cost(product_id)
 
+        # filter transactions_df to extract required range of dates
         self.transactions = self.transactions_df.filter(col('utc_date').between('2020-03-01', '2023-03-31'))
 
+        # explode 'items' column to remove array object
         transactions_exploded = (
             self.transactions
             .select(
@@ -54,6 +82,7 @@ class MoMTransformer:
             )
         )
 
+        # filter data to only include rows with required product id
         self.transactions_filtered = transactions_exploded.filter(col('item') == product_id)
 
         self.transactions_filtered = (
@@ -65,9 +94,11 @@ class MoMTransformer:
             )
         )
 
+        # separate transactions into purchases and returns
         purchases = self.__get_purchases()
         returns = self.__get_returns()
 
+        # calculate data where there are returns with a previous purchase date
         returns_with_purchase_date = (
             returns.alias('r')
             .join(purchases.alias('p'), (col('r.utc_date') >= col('p.utc_date')) & (
@@ -81,6 +112,7 @@ class MoMTransformer:
             .orderBy(col('r.email'))
         )
 
+        # calculate the most recent purchase date
         returns_with_purchase_date = (
             returns_with_purchase_date
             .select(
@@ -101,6 +133,7 @@ class MoMTransformer:
             )
         )
 
+        # calculate data where item was purchased but not returned
         purchased_without_return = (
             purchases
             .select(
@@ -110,8 +143,10 @@ class MoMTransformer:
             )
             .join(returns.select("email"), ["email"], "left_anti"))
 
+        # merge the two datasets
         product_sales_df = purchased_without_return.union(returns_with_purchase_date)
 
+        # calculate product sales based on returns and purchase dates
         product_sales_df = (
             product_sales_df
             .select(
