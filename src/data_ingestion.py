@@ -88,7 +88,7 @@ class DataIngest:
 
     def monitor_jobs(self):
         """
-        monitors and logs the status of the running jobs at a fixed interval
+        monitors and logs the status of the running jobs at a fixed (20 second) interval
         """
         jobs_copy = self.running_jobs.copy()
         for job_id in jobs_copy:
