@@ -33,7 +33,6 @@ class DataIngest:
         """
         Retrieves data from the given start_date to end_date (by default end_date is yesterday)
         """
-        # start_date = start_date  # to be edited
         for year in range(start_date.year, end_date.year + 1):
             if year > start_date.year:
                 start_month, start_day = 1, 1
@@ -92,7 +91,7 @@ class DataIngest:
 
     def monitor_jobs(self):
         """
-        monitors and logs the status of the running jobs at a fixed interval
+        monitors and logs the status of the running jobs at a fixed (20 second) interval
         """
         jobs_copy = self.running_jobs.copy()
         for job_id in jobs_copy:
